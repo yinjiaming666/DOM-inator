@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "DOM Blocker Extension",
+  "version": "1.0",
+  "description": "根据自定义规则屏蔽网页元素，并显示已屏蔽的样式。",
+  "action": {
+    "default_title": "DOM-inator (DOM 终结者)"
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"]
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "sidePanel"
+  ]
+}

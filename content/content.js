@@ -1,0 +1,347 @@
+let currentRules = [];
+let observer = null;
+let isPickingMode = false;
+let hoveredElement = null;
+let currentPickType = 'selector'; // 'selector', 'text', 'image'
+let currentTargetInput = 'selector'; // 标记回传给哪个输入框
+
+// 生成通用 CSS 选择器的辅助函数（移除 nth-child 限制，实现一次屏蔽同类元素）
+const generateSelector = (el) => {
+  if (el.tagName.toLowerCase() === 'html') return 'html';
+  if (el.id) return `#${el.id}`;
+
+  let selector = el.tagName.toLowerCase();
+  
+  if (el.className && typeof el.className === 'string') {
+    // 过滤掉扩展添加的类名和一些常见的表示状态的动态类名（如 active, hover 等，可选）
+    const classes = el.className.split(/\s+/).filter(c => 
+      c && 
+      !c.includes('extension-picker') && 
+      !c.includes('extension-blocked')
+    );
+    if (classes.length > 0) {
+      selector += `.${classes.join('.')}`;
+    }
+  }
+
+  // 为了让选择器更精确，但又不至于像 nth-child 那样只能匹配一个
+  // 我们可以向上寻找有 id 的父元素，或者直接返回 tag.class 组合
+  // 这里我们选择返回最通用的 tag.class 组合，这样就能匹配所有同类广告/评论了
+  
+  return selector;
+};
+
+// --- DOM 选择器交互逻辑 (全屏快照遮罩方案) ---
+let overlaySvg = null;
+let pickerToolbar = null;
+
+const createOverlay = () => {
+  // 创建覆盖全屏的 SVG 遮罩层
+  overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  overlaySvg.id = 'extension-picker-overlay';
+  overlaySvg.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    z-index: 2147483646; cursor: crosshair;
+  `;
+  overlaySvg.innerHTML = `
+    <defs>
+      <mask id="picker-mask">
+        <rect width="100%" height="100%" fill="white" />
+        <rect id="picker-hole" x="0" y="0" width="0" height="0" fill="black" />
+      </mask>
+    </defs>
+    <!-- 半透明黑色背景，挖空部分通过 mask 实现 -->
+    <rect width="100%" height="100%" fill="rgba(0,0,0,0.5)" mask="url(#picker-mask)" />
+    <!-- 蓝色高亮边框 -->
+    <rect id="picker-outline" x="0" y="0" width="0" height="0" fill="none" stroke="#1a73e8" stroke-width="3" />
+  `;
+  document.documentElement.appendChild(overlaySvg);
+
+  // 创建顶部提示和取消工具栏
+  pickerToolbar = document.createElement('div');
+  pickerToolbar.id = 'extension-picker-toolbar';
+  pickerToolbar.style.cssText = `
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 2147483647; background: #fff; padding: 12px 24px;
+    border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    display: flex; gap: 16px; align-items: center; font-family: sans-serif;
+    color: #333; font-size: 14px; pointer-events: auto;
+  `;
+  pickerToolbar.innerHTML = `
+    <span>👆 请点击页面上的元素生成屏蔽规则</span>
+    <button id="extension-picker-cancel" style="
+      padding: 6px 12px; cursor: pointer; border: 1px solid #ccc;
+      background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #333;
+    ">取消 (Esc)</button>
+  `;
+  document.documentElement.appendChild(pickerToolbar);
+
+  // 取消按钮点击事件
+  document.getElementById('extension-picker-cancel').addEventListener('click', (e) => {
+    e.stopPropagation();
+    stopPickingMode();
+  });
+};
+
+  const handleMouseMove = (e) => {
+    if (!isPickingMode || !overlaySvg) return;
+  
+    // 隐藏遮罩和高亮框以获取底层元素
+    overlaySvg.style.display = 'none';
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    overlaySvg.style.display = 'block';
+  
+    // 避免选中工具栏或已经屏蔽的元素
+    if (!target || target.closest('#extension-picker-toolbar') || target.classList.contains('extension-blocked-element')) {
+      document.getElementById('picker-hole').setAttribute('width', '0');
+      document.getElementById('picker-outline').setAttribute('width', '0');
+      hoveredElement = null;
+      return;
+    }
+  
+    hoveredElement = target;
+    const rect = target.getBoundingClientRect();
+    
+    // 更新遮罩层挖空区域和高亮边框
+    const hole = document.getElementById('picker-hole');
+    const outline = document.getElementById('picker-outline');
+    
+    hole.setAttribute('x', rect.left);
+    hole.setAttribute('y', rect.top);
+    hole.setAttribute('width', rect.width);
+    hole.setAttribute('height', rect.height);
+    
+    outline.setAttribute('x', rect.left);
+    outline.setAttribute('y', rect.top);
+    outline.setAttribute('width', rect.width);
+    outline.setAttribute('height', rect.height);
+  };
+
+const handleClick = (e) => {
+  if (!isPickingMode) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  // 如果点击的是工具栏本身，直接忽略（取消按钮有自己的事件）
+  if (e.target.closest('#extension-picker-toolbar')) return;
+
+  if (hoveredElement) {
+    const targetEl = hoveredElement;
+    
+    // 退出选择模式，恢复页面交互
+    stopPickingMode();
+    
+    // 获取提取结果
+    let extractedValue = '';
+    
+    if (currentPickType === 'selector') {
+      extractedValue = generateSelector(targetEl);
+    } 
+    else if (currentPickType === 'text') {
+      let text = targetEl.innerText || '';
+      text = text.trim();
+      if (!text) {
+        alert('所选元素没有可识别的文本内容！');
+        return;
+      }
+      extractedValue = text.length > 100 ? text.substring(0, 100) : text;
+    } 
+    else if (currentPickType === 'image') {
+      if (targetEl.tagName.toLowerCase() === 'img') {
+        extractedValue = targetEl.src;
+      } else {
+        const bg = window.getComputedStyle(targetEl).backgroundImage;
+        if (bg && bg !== 'none') {
+          const match = bg.match(/url\(['"]?(.*?)['"]?\)/);
+          if (match) extractedValue = match[1];
+        }
+      }
+      if (!extractedValue) {
+        alert('所选元素不是图片或没有背景图！');
+        return;
+      }
+    }
+
+    // 将提取结果直接发给侧边栏 (Side Panel)// 将结果发回 Popup 页面并重新打开 Popup
+    if (extractedValue) {
+      // 通过 storage 传递数据给 popup
+      chrome.storage.local.set({
+        pendingSelection: {
+          targetInput: currentTargetInput,
+          value: extractedValue,
+          pickType: currentPickType
+        }
+      }, () => {
+        // 提醒用户去扩展面板查看
+        alert('✅ 提取成功！请重新点击右上角插件图标继续添加规则。');
+        console.log('已提取内容:', extractedValue);
+      });
+    }
+  }
+};
+
+const handleKeyDown = (e) => {
+  if (isPickingMode && e.key === 'Escape') {
+    stopPickingMode();
+  }
+};
+
+const startPickingMode = (pickType = 'selector', targetInput = 'selector') => {
+  if (isPickingMode) return;
+  isPickingMode = true;
+  currentPickType = pickType;
+  currentTargetInput = targetInput;
+  
+  createOverlay();
+  
+  let hintText = '👆 请点击页面上的元素生成选择器';
+  if (currentPickType === 'text') hintText = '👆 请点击你要提取的文本片段';
+  if (currentPickType === 'image') hintText = '👆 请点击你要提取的图片';
+  if (currentTargetInput === 'container') hintText = '👆 请点击你想作为父容器的元素';
+  
+  const span = document.querySelector('#extension-picker-toolbar span');
+  if (span) span.textContent = hintText;
+  
+  // 在捕获阶段监听事件，确保优先处理并能阻断页面默认行为
+  document.addEventListener('mousemove', handleMouseMove, true);
+  document.addEventListener('click', handleClick, true);
+  document.addEventListener('keydown', handleKeyDown, true);
+};
+
+const stopPickingMode = () => {
+  isPickingMode = false;
+  
+  if (overlaySvg) overlaySvg.remove();
+  if (pickerToolbar) pickerToolbar.remove();
+  overlaySvg = null;
+  pickerToolbar = null;
+  hoveredElement = null;
+
+  document.removeEventListener('mousemove', handleMouseMove, true);
+  document.removeEventListener('click', handleClick, true);
+  document.removeEventListener('keydown', handleKeyDown, true);
+};
+
+// 监听 Popup 发来的消息
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'startPicking') {
+    startPickingMode(request.pickType || 'selector', request.targetInput || 'selector');
+  }
+});
+
+// 统一的添加屏蔽样式的方法
+const blockElement = (el) => {
+  if (el && !el.classList.contains('extension-blocked-element')) {
+    el.classList.add('extension-blocked-element');
+  }
+};
+
+// 执行屏蔽规则
+const applyRules = () => {
+  if (!currentRules || currentRules.length === 0) return;
+  
+  currentRules.forEach(rule => {
+    // 兼容旧版本的纯字符串规则（默认按 CSS 选择器处理）
+    const ruleObj = typeof rule === 'string' ? { type: 'selector', keyword: rule } : rule;
+    
+    try {
+      if (ruleObj.type === 'selector') {
+        const elements = document.querySelectorAll(ruleObj.keyword);
+        elements.forEach(el => blockElement(el));
+      } 
+      else if (ruleObj.type === 'text') {
+        // 使用 TreeWalker 遍历页面上的所有文本节点
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+          if (node.nodeValue.includes(ruleObj.keyword)) {
+            const parent = node.parentElement;
+            if (!parent) continue;
+            
+            // 避免把自己添加的提示文字（或已被屏蔽的容器内部文本）再次处理
+            if (parent.closest('.extension-blocked-element')) continue;
+            
+            // 查找最近的指定父容器，如果不指定，则屏蔽文本的直接父标签
+            const targetEl = (ruleObj.container && ruleObj.container !== '*') 
+              ? parent.closest(ruleObj.container) 
+              : parent;
+              
+            blockElement(targetEl);
+          }
+        }
+      } 
+      else if (ruleObj.type === 'image') {
+        // 查找所有图片，通过 src 属性匹配
+        const imgs = document.querySelectorAll('img');
+        imgs.forEach(img => {
+          // 排除已经被屏蔽的图片
+          if (img.closest('.extension-blocked-element')) return;
+
+          if (img.src.includes(ruleObj.keyword)) {
+            const targetEl = (ruleObj.container && ruleObj.container !== '*') 
+              ? img.closest(ruleObj.container) 
+              : img;
+            blockElement(targetEl);
+          }
+        });
+      }
+    } catch (e) {
+      console.error('规则执行失败:', ruleObj, e);
+    }
+  });
+};
+
+// 清除现有屏蔽标记
+const clearRules = () => {
+  document.querySelectorAll('.extension-blocked-element').forEach(el => {
+    el.classList.remove('extension-blocked-element');
+  });
+};
+
+// 监听 DOM 变化以处理动态加载的元素（如瀑布流、懒加载广告）
+const startObserver = () => {
+  if (observer) observer.disconnect();
+  
+  observer = new MutationObserver((mutations) => {
+    // 使用 requestAnimationFrame 简单节流
+    requestAnimationFrame(() => {
+      applyRules();
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+};
+
+// 初始化获取当前域名的规则
+const init = () => {
+  const domain = window.location.hostname;
+  
+  chrome.storage.local.get(['domRules'], (result) => {
+    const allRules = result.domRules || {};
+    currentRules = allRules[domain] || [];
+    
+    applyRules();
+    startObserver();
+  });
+
+  // 监听存储变化，当在 Popup 添加或删除规则时实时生效
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.domRules) {
+      const allRules = changes.domRules.newValue || {};
+      currentRules = allRules[domain] || [];
+      
+      clearRules();
+      applyRules();
+    }
+  });
+};
+
+// 确保 DOM 加载后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
