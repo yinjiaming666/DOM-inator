@@ -20,20 +20,15 @@
     
     <div class="input-group" style="flex-direction: column; gap: 8px; margin-bottom: 16px;">
       <select id="ruleType" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
-        <option value="selector">通过 CSS选择器 屏蔽</option>
         <option value="text">通过 包含特定文本 屏蔽</option>
+        <option value="selector">通过 CSS选择器 屏蔽</option>
         <option value="image">通过 包含特定图片 屏蔽</option>
       </select>
       
-      <div id="selectorInputGroup" style="display: flex; gap: 8px;">
-        <input type="text" id="selectorInput" placeholder="输入CSS选择器 (如 .ad-banner)" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
-        <button id="pickElementBtn" title="在页面上选择元素">🎯 选择</button>
-      </div>
-
-      <div id="contentInputGroup" style="display: none; flex-direction: column; gap: 8px;">
+      <div id="unifiedInputGroup" style="display: flex; flex-direction: column; gap: 8px;">
         <div style="display: flex; gap: 8px;">
-          <input type="text" id="keywordInput" placeholder="输入屏蔽关键字或图片URL片段" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
-          <button id="pickContentBtn" title="在页面上提取文本/图片" style="padding: 6px 10px; background-color: #f1f3f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; white-space: nowrap;">🎯 提取</button>
+          <input type="text" id="keywordInput" placeholder="输入要屏蔽的文本内容 (如 张三)" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+          <button id="pickContentBtn" title="在页面上提取特征" style="padding: 6px 10px; background-color: #f1f3f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; white-space: nowrap;">🎯 提取</button>
         </div>
         <div style="display: flex; gap: 8px;">
           <input type="text" id="containerInput" placeholder="要隐藏的父容器(如 .comment-item，不填默认自身)" style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">

@@ -250,7 +250,17 @@ const applyRules = () => {
     try {
       if (ruleObj.type === 'selector') {
         const elements = document.querySelectorAll(ruleObj.keyword);
-        elements.forEach(el => blockElement(el));
+        elements.forEach(el => {
+          // 如果该元素已经被更具体的规则屏蔽，跳过
+          if (el.closest('.extension-blocked-element')) return;
+          
+          // 查找最近的指定父容器，如果不指定，则屏蔽该元素本身
+          const targetEl = (ruleObj.container && ruleObj.container !== '*') 
+            ? el.closest(ruleObj.container) 
+            : el;
+            
+          if (targetEl) blockElement(targetEl);
+        });
       } 
       else if (ruleObj.type === 'text') {
         // 使用 TreeWalker 遍历页面上的所有文本节点

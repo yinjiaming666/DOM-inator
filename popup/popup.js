@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const currentDomainEl = document.getElementById('currentDomain');
-  const selectorInput = document.getElementById('selectorInput');
-  const pickElementBtn = document.getElementById('pickElementBtn');
+  const keywordInput = document.getElementById('keywordInput');
+  const containerInput = document.getElementById('containerInput');
   const pickContentBtn = document.getElementById('pickContentBtn');
   const pickContainerBtn = document.getElementById('pickContainerBtn');
   const addRuleBtn = document.getElementById('addRuleBtn');
@@ -10,20 +10,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const globalToggleText = document.getElementById('globalToggleText');
 
   const ruleTypeSel = document.getElementById('ruleType');
-  const selectorGroup = document.getElementById('selectorInputGroup');
-  const contentGroup = document.getElementById('contentInputGroup');
-  const keywordInput = document.getElementById('keywordInput');
-  const containerInput = document.getElementById('containerInput');
 
   // 监听规则类型切换
   ruleTypeSel.addEventListener('change', (e) => {
-    if (e.target.value === 'selector') {
-      selectorGroup.style.display = 'flex';
-      contentGroup.style.display = 'none';
-    } else {
-      selectorGroup.style.display = 'none';
-      contentGroup.style.display = 'flex';
-      keywordInput.placeholder = e.target.value === 'text' ? '输入要屏蔽的文本内容 (如 张三)' : '输入图片URL片段 (如 ads/banner.jpg)';
+    if (e.target.value === 'text') {
+      keywordInput.placeholder = '输入要屏蔽的文本内容 (如 张三)';
+    } else if (e.target.value === 'selector') {
+      keywordInput.placeholder = '输入CSS选择器 (如 .ad-banner)';
+    } else if (e.target.value === 'image') {
+      keywordInput.placeholder = '输入图片URL片段 (如 ads/banner.jpg)';
     }
     saveFormState();
   });
@@ -33,7 +28,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.storage.local.set({
       popupFormState: {
         ruleType: ruleTypeSel.value,
-        selector: selectorInput.value,
         keyword: keywordInput.value,
         container: containerInput.value
       }
@@ -41,7 +35,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // 监听输入框变化并保存状态
-  selectorInput.addEventListener('input', saveFormState);
   keywordInput.addEventListener('input', saveFormState);
   containerInput.addEventListener('input', saveFormState);
 
@@ -94,12 +87,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.storage.local.get(['popupFormState'], (result) => {
     if (result.popupFormState) {
       const state = result.popupFormState;
-      ruleTypeSel.value = state.ruleType || 'selector';
-      selectorInput.value = state.selector || '';
+      ruleTypeSel.value = state.ruleType || 'text'; // 默认设为文本
       keywordInput.value = state.keyword || '';
       containerInput.value = state.container || '';
       
-      // 触发一下 change 事件来更新 UI 的显示/隐藏
+      // 触发一下 change 事件来更新 placeholder 的显示
+      ruleTypeSel.dispatchEvent(new Event('change'));
+    } else {
+      ruleTypeSel.value = 'text';
       ruleTypeSel.dispatchEvent(new Event('change'));
     }
   });
@@ -160,39 +155,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 添加规则
   addRuleBtn.addEventListener('click', () => {
     const type = ruleTypeSel.value;
-    let newRule = null;
-
-    if (type === 'selector') {
-      const selector = selectorInput.value.trim();
-      if (!selector) return;
-
-      // 简单验证选择器是否合法
-      try {
-        document.createDocumentFragment().querySelector(selector);
-      } catch (e) {
-        alert('无效的 CSS 选择器！');
-        return;
-      }
-      newRule = { type: 'selector', keyword: selector };
-    } else {
-      const keyword = keywordInput.value.trim();
-      const container = containerInput.value.trim();
-      
-      if (!keyword) {
-        alert('请输入要屏蔽的内容或链接片段！');
-        return;
-      }
-      
-      if (container) {
-        try {
-          document.createDocumentFragment().querySelector(container);
-        } catch (e) {
-          alert('无效的父容器 CSS 选择器！');
-          return;
-        }
-      }
-      newRule = { type, keyword, container: container || '*' };
+    const keyword = keywordInput.value.trim();
+    const container = containerInput.value.trim();
+    
+    if (!keyword) {
+      console.warn('请输入要屏蔽的内容或特征！');
+      return;
     }
+    
+    if (type === 'selector') {
+      try {
+        document.createDocumentFragment().querySelector(keyword);
+      } catch (e) {
+        console.warn('无效的 CSS 选择器！');
+        return;
+      }
+    }
+    
+    if (container) {
+      try {
+        document.createDocumentFragment().querySelector(container);
+      } catch (e) {
+        console.warn('无效的父容器 CSS 选择器！');
+        return;
+      }
+    }
+    
+    const newRule = { type, keyword, container: container || '*' };
 
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
@@ -202,21 +191,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // 判断是否已存在相同规则
       const exists = allRules[domain].some(r => {
-        const rObj = typeof r === 'string' ? { type: 'selector', keyword: r } : r;
-        return rObj.type === newRule.type && rObj.keyword === newRule.keyword && rObj.container === newRule.container;
+        const rObj = typeof r === 'string' ? { type: 'selector', keyword: r, container: '*' } : r;
+        return rObj.type === newRule.type && rObj.keyword === newRule.keyword && (rObj.container || '*') === newRule.container;
       });
 
       if (!exists) {
         allRules[domain].push(newRule);
         chrome.storage.local.set({ domRules: allRules }, () => {
-          selectorInput.value = '';
           keywordInput.value = '';
           containerInput.value = '';
           saveFormState(); // 添加成功后清空状态
           loadRules();
         });
       } else {
-        alert('该规则已存在！');
+        console.warn('该规则已存在！');
       }
     });
   });
@@ -238,28 +226,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 监听来自 content script 的消息（获取用户选择的元素）
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "elementSelected") {
-      // 在 Side Panel 模式下，面板不会关闭，直接回填数据
       const { targetInput, value, pickType } = request;
       
-      if (targetInput === 'selector') {
-        ruleTypeSel.value = 'selector';
-        selectorGroup.style.display = 'flex';
-        contentGroup.style.display = 'none';
-        selectorInput.value = value;
-      } 
-      else if (targetInput === 'keyword') {
+      if (targetInput === 'keyword') {
         ruleTypeSel.value = pickType;
-        selectorGroup.style.display = 'none';
-        contentGroup.style.display = 'flex';
-        keywordInput.placeholder = pickType === 'text' ? '输入要屏蔽的文本内容 (如 张三)' : '输入图片URL片段 (如 ads/banner.jpg)';
         keywordInput.value = value;
-      } 
-      else if (targetInput === 'container') {
-        selectorGroup.style.display = 'none';
-        contentGroup.style.display = 'flex';
+      } else if (targetInput === 'container') {
         containerInput.value = value;
       }
       
+      ruleTypeSel.dispatchEvent(new Event('change'));
       saveFormState(); // 更新并保存新状态
     }
   });
@@ -310,10 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // 开启页面选择器 (选择器模式)
-  pickElementBtn.addEventListener('click', () => triggerPicker('selector', 'selector'));
-
-  // 开启页面选择器 (提取文本/图片模式)
+  // 开启页面选择器 (提取文本/图片/选择器模式)
   pickContentBtn.addEventListener('click', () => triggerPicker(ruleTypeSel.value, 'keyword'));
 
   // 开启页面选择器 (提取父容器模式，统一使用 CSS 选择器逻辑)
