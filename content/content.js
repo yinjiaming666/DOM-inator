@@ -162,20 +162,15 @@ const handleClick = (e) => {
       }
     }
 
-    // 将提取结果直接发给侧边栏 (Side Panel)// 将结果发回 Popup 页面并重新打开 Popup
+    // 将提取结果直接发给侧边栏 (Side Panel)
     if (extractedValue) {
-      // 通过 storage 传递数据给 popup
-      chrome.storage.local.set({
-        pendingSelection: {
-          targetInput: currentTargetInput,
-          value: extractedValue,
-          pickType: currentPickType
-        }
-      }, () => {
-        // 提醒用户去扩展面板查看
-        alert('✅ 提取成功！请重新点击右上角插件图标继续添加规则。');
-        console.log('已提取内容:', extractedValue);
+      chrome.runtime.sendMessage({
+        action: "elementSelected",
+        value: extractedValue,
+        targetInput: currentTargetInput,
+        pickType: currentPickType
       });
+      console.log('已提取内容:', extractedValue);
     }
   }
 };
