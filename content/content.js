@@ -4,6 +4,8 @@ let isPickingMode = false;
 let hoveredElement = null;
 let currentPickType = 'selector'; // 'selector', 'text', 'image'
 let currentTargetInput = 'selector'; // 标记回传给哪个输入框
+let temporarilyUnblockedElements = new Set(); // 记录用户点击“暂时显示”的元素
+let isGlobalEnabled = true; // 全局屏蔽开关状态
 
 // 生成通用 CSS 选择器的辅助函数（移除 nth-child 限制，实现一次屏蔽同类元素）
 const generateSelector = (el) => {
@@ -237,6 +239,8 @@ const blockElement = (el) => {
 
 // 执行屏蔽规则
 const applyRules = () => {
+  // 如果全局开关被关闭，直接返回，不执行任何屏蔽逻辑
+  if (!isGlobalEnabled) return;
   if (!currentRules || currentRules.length === 0) return;
   
   currentRules.forEach(rule => {
@@ -292,8 +296,14 @@ const applyRules = () => {
 
 // 清除现有屏蔽标记
 const clearRules = () => {
+  // 清空“暂时显示”的记录
+  temporarilyUnblockedElements.clear();
+
   document.querySelectorAll('.extension-blocked-element').forEach(el => {
     el.classList.remove('extension-blocked-element');
+    // 移除所有的“暂时显示”按钮
+    const btn = el.querySelector('.extension-unblock-btn');
+    if (btn) btn.remove();
   });
 };
 
@@ -314,11 +324,14 @@ const startObserver = () => {
   });
 };
 
-// 初始化获取当前域名的规则
+// 初始化获取当前域名的规则和全局开关状态
 const init = () => {
   const domain = window.location.hostname;
   
-  chrome.storage.local.get(['domRules'], (result) => {
+  chrome.storage.local.get(['domRules', 'globalToggleState'], (result) => {
+    // 读取全局开关状态，默认为 true
+    isGlobalEnabled = result.globalToggleState !== false;
+
     const allRules = result.domRules || {};
     currentRules = allRules[domain] || [];
     
@@ -326,14 +339,30 @@ const init = () => {
     startObserver();
   });
 
-  // 监听存储变化，当在 Popup 添加或删除规则时实时生效
+  // 监听存储变化，当在 Popup 添加或删除规则，或者切换全局开关时实时生效
   chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.domRules) {
-      const allRules = changes.domRules.newValue || {};
-      currentRules = allRules[domain] || [];
-      
-      clearRules();
-      applyRules();
+    if (namespace === 'local') {
+      let needReapply = false;
+
+      // 如果全局开关发生变化
+      if (changes.globalToggleState !== undefined) {
+        isGlobalEnabled = changes.globalToggleState.newValue !== false;
+        needReapply = true;
+      }
+
+      // 如果当前域名的规则发生变化
+      if (changes.domRules) {
+        const allRules = changes.domRules.newValue || {};
+        currentRules = allRules[domain] || [];
+        needReapply = true;
+      }
+
+      if (needReapply) {
+        // 先清除所有现有的屏蔽效果
+        clearRules();
+        // 如果开关开着，则重新应用最新规则；如果关着，applyRules 内部会直接 return
+        applyRules();
+      }
     }
   });
 };

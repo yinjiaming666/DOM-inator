@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pickContainerBtn = document.getElementById('pickContainerBtn');
   const addRuleBtn = document.getElementById('addRuleBtn');
   const rulesList = document.getElementById('rulesList');
+  const globalToggle = document.getElementById('globalToggle');
+  const globalToggleText = document.getElementById('globalToggleText');
 
   const ruleTypeSel = document.getElementById('ruleType');
   const selectorGroup = document.getElementById('selectorInputGroup');
@@ -68,6 +70,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 初始加载域名和规则
   updateDomainInfo();
+
+  // 初始化全局开关状态
+  chrome.storage.local.get(['globalToggleState'], (result) => {
+    // 默认是开启的 (undefined 时视为 true)
+    const isEnabled = result.globalToggleState !== false;
+    globalToggle.checked = isEnabled;
+    globalToggleText.textContent = isEnabled ? '已开启' : '已暂停';
+    globalToggleText.style.color = isEnabled ? '#1a73e8' : '#888';
+  });
+
+  // 监听全局开关切换
+  globalToggle.addEventListener('change', (e) => {
+    const isEnabled = e.target.checked;
+    globalToggleText.textContent = isEnabled ? '已开启' : '已暂停';
+    globalToggleText.style.color = isEnabled ? '#1a73e8' : '#888';
+    
+    // 保存状态到 storage，content script 会监听到这个变化
+    chrome.storage.local.set({ globalToggleState: isEnabled });
+  });
 
   // 恢复之前保存的表单状态
   chrome.storage.local.get(['popupFormState'], (result) => {

@@ -6,9 +6,16 @@
 </head>
 <body>
   <div class="container">
-    <h2>DOM 屏蔽器</h2>
-    <div class="domain-info">
-      当前域名: <strong id="currentDomain">获取中...</strong>
+    <h2>DOM-inator (DOM 终结者)</h2>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee;">
+      <div class="domain-info" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">
+        当前域名: <strong id="currentDomain">获取中...</strong>
+      </div>
+      <label class="switch" style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+        <span id="globalToggleText">已开启</span>
+        <input type="checkbox" id="globalToggle" checked style="accent-color: #1a73e8; cursor: pointer;">
+      </label>
     </div>
     
     <div class="input-group" style="flex-direction: column; gap: 8px; margin-bottom: 16px;">
