@@ -23,6 +23,10 @@
     "storage",
     "activeTab",
     "tabs",
-    "sidePanel"
+    "sidePanel",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ]
 }

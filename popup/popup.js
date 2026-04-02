@@ -43,25 +43,65 @@ document.addEventListener('DOMContentLoaded', async () => {
   keywordInput.addEventListener('input', saveFormState);
   containerInput.addEventListener('input', saveFormState);
 
+  // 更新当前域名的函数
+  const updateDomainInfo = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url) {
+        // 排除受限页面
+        if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://')) {
+          domain = '受限页面';
+        } else {
+          const url = new URL(tab.url);
+          domain = url.hostname;
+        }
+      } else {
+        domain = '未知页面';
+      }
+    } catch (e) {
+      console.error('获取域名失败', e);
+      domain = '未知页面';
+    }
+    currentDomainEl.textContent = domain;
+    loadRules(domain);
+  };
+
+  // 初始加载域名和规则
+  updateDomainInfo();
+
+  // 恢复之前保存的表单状态
+  chrome.storage.local.get(['popupFormState'], (result) => {
+    if (result.popupFormState) {
+      const state = result.popupFormState;
+      ruleTypeSel.value = state.ruleType || 'selector';
+      selectorInput.value = state.selector || '';
+      keywordInput.value = state.keyword || '';
+      containerInput.value = state.container || '';
+      
+      // 触发一下 change 事件来更新 UI 的显示/隐藏
+      ruleTypeSel.dispatchEvent(new Event('change'));
+    }
+  });
+
+  // 监听 Tab 切换事件
+  chrome.tabs.onActivated.addListener(() => {
+    updateDomainInfo();
+  });
+
+  // 监听 Tab URL 更新事件 (处理同一个 Tab 内的跳转)
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.url && tab.active) {
+      updateDomainInfo();
+    }
+  });
+
   let domain = '未知域名';
 
-  // 获取当前标签页域名
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.url) {
-      const url = new URL(tab.url);
-      domain = url.hostname;
-    }
-  } catch (e) {
-    console.error('获取域名失败', e);
-  }
-  currentDomainEl.textContent = domain;
-
   // 渲染规则列表
-  const loadRules = () => {
+  const loadRules = (targetDomain = domain) => {
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
-      const domainRules = allRules[domain] || [];
+      const domainRules = allRules[targetDomain] || [];
       
       rulesList.innerHTML = '';
       if (domainRules.length === 0) {
@@ -171,8 +211,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   };
 
-  // 初始化加载
-  loadRules();
+  // 初始化加载 (已被 updateDomainInfo 替代，这里删除冗余的调用)
+  // loadRules();
 
   // 监听来自 content script 的消息（获取用户选择的元素）
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -203,34 +243,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 初始化加载
-  loadRules();
-  
-  // 检查是否有刚刚拾取返回的数据
-  chrome.storage.local.get(['popupFormState'], (result) => {
-    // 1. 先恢复基本状态
-    if (result.popupFormState) {
-      const state = result.popupFormState;
-      ruleTypeSel.value = state.ruleType || 'selector';
-      selectorInput.value = state.selector || '';
-      keywordInput.value = state.keyword || '';
-      containerInput.value = state.container || '';
-      
-      // 触发一下 change 事件来更新 UI 的显示/隐藏
-      ruleTypeSel.dispatchEvent(new Event('change'));
-    }
-  });
   const triggerPicker = async (pickType, targetInput) => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab) {
-        chrome.tabs.sendMessage(tab.id, { action: "startPicking", pickType, targetInput });
-        // 注意：因为现在是 Side Panel 侧边栏模式，我们千万不能调用 window.close()
-        // 这样侧边栏就会一直保持打开，用户选择后能直接看到回填效果！
+        // 排除受限页面
+        if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('https://chrome.google.com/webstore'))) {
+          console.warn('无法在此类型的页面上使用拾取功能。请在普通的网页上使用。');
+          return;
+        }
+
+        const sendMessage = () => {
+          chrome.tabs.sendMessage(tab.id, { action: "startPicking", pickType, targetInput })
+            .catch((err) => {
+              console.warn('⚠️ 消息发送失败，即使尝试了重新注入:', err.message);
+            });
+        };
+
+        // 尝试发送一个探测消息，检查 content script 是否活跃
+        chrome.tabs.sendMessage(tab.id, { action: "ping" }).then(() => {
+          // 收到响应或没报错，说明 content script 已经存在，直接发真正的消息
+          sendMessage();
+        }).catch(async () => {
+          // 如果报错，说明网页没刷新，content script 失效了。我们尝试自动给它注入！
+          console.log('检测到网页未注入脚本，正在尝试自动注入...');
+          try {
+            await chrome.scripting.insertCSS({
+              target: { tabId: tab.id },
+              files: ["content/content.css"]
+            });
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content/content.js"]
+            });
+            // 注入完成后，稍微等一下让脚本初始化，然后再发消息
+            setTimeout(sendMessage, 100);
+          } catch (injectErr) {
+            // 将 error 降级为 warn，因为它只是不能注入，不影响插件的其他功能
+            console.warn('⚠️ 无法在此页面自动注入脚本 (通常是因为没有访问该域名的权限)。请尝试手动刷新网页。', injectErr.message);
+          }
+        });
       }
     } catch (e) {
       console.error('发送选择消息失败:', e);
-      alert('无法连接到当前页面，请刷新页面后重试。');
     }
   };
 

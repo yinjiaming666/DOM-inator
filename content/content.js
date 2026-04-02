@@ -219,6 +219,10 @@ const stopPickingMode = () => {
 
 // 监听 Popup 发来的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'ping') {
+    sendResponse({ status: 'ok' });
+    return;
+  }
   if (request.action === 'startPicking') {
     startPickingMode(request.pickType || 'selector', request.targetInput || 'selector');
   }
