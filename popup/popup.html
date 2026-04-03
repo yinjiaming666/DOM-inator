@@ -60,7 +60,14 @@
     </div>
 
     <div class="rules-section">
-      <h3 id="rulesListTitle" style="margin-bottom: 8px; font-size: 14px; color: #333;">当前域名的屏蔽规则：</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h3 id="rulesListTitle" style="margin: 0; font-size: 14px; color: #333;">当前域名的屏蔽规则：</h3>
+        <div style="display: flex; gap: 8px;">
+          <button id="importBtn" title="导入JSON规则" style="padding: 4px 8px; font-size: 12px; background: #f1f3f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; color: #5f6368;">导入</button>
+          <button id="exportBtn" title="导出当前列表规则" style="padding: 4px 8px; font-size: 12px; background: #f1f3f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; color: #5f6368;">导出</button>
+          <input type="file" id="importFileInput" accept=".json" style="display: none;">
+        </div>
+      </div>
       <ul id="rulesList"></ul>
     </div>
   </div>

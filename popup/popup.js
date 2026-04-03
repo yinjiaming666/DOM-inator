@@ -488,4 +488,125 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 开启页面选择器 (提取父容器模式，统一使用 CSS 选择器逻辑)
   pickContainerBtn.addEventListener('click', () => triggerPicker('selector', 'container'));
+
+  // 导出配置功能
+  const exportBtn = document.getElementById('exportBtn');
+  exportBtn.addEventListener('click', () => {
+    chrome.storage.local.get(['domRules'], (result) => {
+      const allRules = result.domRules || {};
+      const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
+      const scopeRules = allRules[targetKey] || [];
+      
+      if (scopeRules.length === 0) {
+        showToast('当前没有可以导出的规则！', 'warn');
+        return;
+      }
+
+      // 生成带有元数据的 JSON 结构
+      const exportData = {
+        app: 'DOM-inator',
+        version: '1.0',
+        scope: currentScope,
+        domain: targetKey,
+        rules: scopeRules,
+        exportedAt: new Date().toISOString()
+      };
+      
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      const safeDomain = domain.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = currentScope === 'domain' ? `dominator_rules_${safeDomain}.json` : 'dominator_rules_global.json';
+      a.download = fileName;
+      a.click();
+      
+      URL.revokeObjectURL(url);
+      showToast('规则导出成功！', 'success');
+    });
+  });
+
+  // 导入配置功能
+  const importBtn = document.getElementById('importBtn');
+  const importFileInput = document.getElementById('importFileInput');
+
+  importBtn.addEventListener('click', () => {
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData = JSON.parse(event.target.result);
+        
+        // 校验格式
+        let rulesToImport = [];
+        if (Array.isArray(importedData)) {
+          // 兼容直接导入规则数组
+          rulesToImport = importedData;
+        } else if (importedData && Array.isArray(importedData.rules)) {
+          // 兼容带有元数据的结构
+          rulesToImport = importedData.rules;
+        } else {
+          throw new Error('无效的规则文件格式');
+        }
+
+        if (rulesToImport.length === 0) {
+          showToast('导入文件没有包含任何规则', 'warn');
+          importFileInput.value = '';
+          return;
+        }
+
+        chrome.storage.local.get(['domRules'], (result) => {
+          const allRules = result.domRules || {};
+          const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
+          
+          if (!allRules[targetKey]) {
+            allRules[targetKey] = [];
+          }
+          
+          let addedCount = 0;
+          rulesToImport.forEach(newRule => {
+            // 如果是老格式的字符串规则，也转成对象以便比较
+            const newRuleObj = typeof newRule === 'string' ? { type: 'selector', keyword: newRule, container: '*', textMatch: '' } : newRule;
+            
+            const exists = allRules[targetKey].some(r => {
+              const rObj = typeof r === 'string' ? { type: 'selector', keyword: r, container: '*', textMatch: '' } : r;
+              return rObj.type === newRuleObj.type && 
+                     rObj.keyword === newRuleObj.keyword && 
+                     (rObj.textMatch || '') === (newRuleObj.textMatch || '') && 
+                     (rObj.container || '*') === (newRuleObj.container || '*');
+            });
+            
+            if (!exists) {
+              allRules[targetKey].push(newRuleObj);
+              addedCount++;
+            }
+          });
+
+          if (addedCount > 0) {
+            chrome.storage.local.set({ domRules: allRules }, () => {
+              loadRules();
+              showToast(`成功导入 ${addedCount} 条规则！`, 'success');
+            });
+          } else {
+            showToast('导入的规则已全部存在，没有新增。', 'info');
+          }
+        });
+      } catch (err) {
+        console.error('导入解析失败:', err);
+        showToast('导入失败: 无法解析 JSON 文件', 'error');
+      }
+      
+      // 清空 file input，以便下次可以导入同一个文件
+      importFileInput.value = '';
+    };
+    reader.readAsText(file);
+  });
 });
