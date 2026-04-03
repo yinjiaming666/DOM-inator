@@ -43,6 +43,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 2000);
   };
 
+  // 更新预览区域的辅助函数
+  const updatePreview = (element, value, label) => {
+    if (!element) return;
+    if (value) {
+      element.style.display = 'block';
+      element.innerHTML = `<strong>${label}：</strong><br/><span class="preview-content"></span>`;
+      element.querySelector('.preview-content').textContent = value;
+    } else {
+      element.style.display = 'none';
+    }
+  };
+
+  const updatePreviews = () => {
+    const kw = keywordInput.value.trim();
+    let typeLabel = '文本内容';
+    if (ruleTypeSel.value === 'selector' || ruleTypeSel.value === 'selector_text') typeLabel = 'CSS 选择器';
+    if (ruleTypeSel.value === 'image') typeLabel = '图片链接';
+    
+    updatePreview(keywordPreview, kw, `当前${typeLabel}`);
+    updatePreview(textMatchPreview, textMatchInput?.value.trim(), '当前必须包含的文本');
+    updatePreview(containerPreview, containerInput.value.trim(), '当前父容器选择器');
+  };
+
   // 监听 Tab 切换
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
