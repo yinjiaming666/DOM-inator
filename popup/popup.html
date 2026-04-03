@@ -18,6 +18,11 @@
       </label>
     </div>
     
+    <div id="scopeTabs" style="display: flex; margin-bottom: 16px; background: #f1f3f4; border-radius: 6px; padding: 4px;">
+      <button class="tab-btn active" data-scope="domain" style="flex: 1; padding: 6px 0; border: none; background: #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; font-size: 13px; font-weight: bold; color: #1a73e8; transition: all 0.2s;">当前域名</button>
+      <button class="tab-btn" data-scope="global" style="flex: 1; padding: 6px 0; border: none; background: transparent; cursor: pointer; font-size: 13px; color: #5f6368; transition: all 0.2s;">全局规则</button>
+    </div>
+
     <div class="input-group" style="flex-direction: column; gap: 8px; margin-bottom: 16px;">
       <select id="ruleType" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
         <option value="text">通过 包含特定文本 屏蔽</option>
@@ -36,11 +41,11 @@
         </div>
       </div>
 
-      <button id="addRuleBtn" style="width: 100%; padding: 8px; margin-top: 4px;">添加屏蔽</button>
+      <button id="addRuleBtn" style="width: 100%; padding: 8px; margin-top: 4px;">添加到当前域名</button>
     </div>
 
     <div class="rules-section">
-      <h3>当前域名的屏蔽规则：</h3>
+      <h3 id="rulesListTitle" style="margin-bottom: 8px; font-size: 14px; color: #333;">当前域名的屏蔽规则：</h3>
       <ul id="rulesList"></ul>
     </div>
   </div>

@@ -431,13 +431,17 @@ const startObserver = () => {
 // 初始化获取当前域名的规则和全局开关状态
 const init = () => {
   const domain = window.location.hostname;
+  const GLOBAL_KEY = '__global__';
   
   chrome.storage.local.get(['domRules', 'globalToggleState'], (result) => {
     // 读取全局开关状态，默认为 true
     isGlobalEnabled = result.globalToggleState !== false;
 
     const allRules = result.domRules || {};
-    currentRules = allRules[domain] || [];
+    const domainRules = allRules[domain] || [];
+    const globalRules = allRules[GLOBAL_KEY] || [];
+    // 合并全局规则和当前域名规则
+    currentRules = [...globalRules, ...domainRules];
     
     applyRules();
     startObserver();
@@ -454,10 +458,12 @@ const init = () => {
         needReapply = true;
       }
 
-      // 如果当前域名的规则发生变化
+      // 如果规则发生变化
       if (changes.domRules) {
         const allRules = changes.domRules.newValue || {};
-        currentRules = allRules[domain] || [];
+        const domainRules = allRules[domain] || [];
+        const globalRules = allRules[GLOBAL_KEY] || [];
+        currentRules = [...globalRules, ...domainRules];
         needReapply = true;
       }
 

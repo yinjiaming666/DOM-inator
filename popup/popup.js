@@ -10,6 +10,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   const globalToggleText = document.getElementById('globalToggleText');
 
   const ruleTypeSel = document.getElementById('ruleType');
+  const rulesListTitle = document.getElementById('rulesListTitle');
+
+  let currentScope = 'domain'; // 'domain' or 'global'
+  const GLOBAL_KEY = '__global__';
+
+  // 监听 Tab 切换
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      // 样式重置
+      tabBtns.forEach(b => {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.boxShadow = 'none';
+        b.style.fontWeight = 'normal';
+        b.style.color = '#5f6368';
+      });
+      
+      const targetBtn = e.target;
+      targetBtn.classList.add('active');
+      targetBtn.style.background = '#fff';
+      targetBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+      targetBtn.style.fontWeight = 'bold';
+      targetBtn.style.color = '#1a73e8';
+
+      currentScope = targetBtn.dataset.scope;
+      
+      // 更新按钮和标题文本
+      addRuleBtn.textContent = currentScope === 'domain' ? '添加到当前域名' : '添加到全局规则';
+      rulesListTitle.textContent = currentScope === 'domain' ? '当前域名的屏蔽规则：' : '全局屏蔽规则 (所有网站生效)：';
+      
+      // 重新加载对应作用域的规则
+      loadRules();
+    });
+  });
 
   // 监听规则类型切换
   ruleTypeSel.addEventListener('change', (e) => {
@@ -123,15 +158,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const loadRules = (targetDomain = domain) => {
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
-      const domainRules = allRules[targetDomain] || [];
+      const targetKey = currentScope === 'domain' ? targetDomain : GLOBAL_KEY;
+      const scopeRules = allRules[targetKey] || [];
       
       rulesList.innerHTML = '';
-      if (domainRules.length === 0) {
+      if (scopeRules.length === 0) {
         rulesList.innerHTML = '<li class="empty">暂无屏蔽规则</li>';
         return;
       }
 
-      domainRules.forEach((rule, index) => {
+      scopeRules.forEach((rule, index) => {
         const li = document.createElement('li');
         li.className = 'rule-item';
         
@@ -191,18 +227,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
-      if (!allRules[domain]) {
-        allRules[domain] = [];
+      const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
+      
+      if (!allRules[targetKey]) {
+        allRules[targetKey] = [];
       }
       
       // 判断是否已存在相同规则
-      const exists = allRules[domain].some(r => {
+      const exists = allRules[targetKey].some(r => {
         const rObj = typeof r === 'string' ? { type: 'selector', keyword: r, container: '*' } : r;
         return rObj.type === newRule.type && rObj.keyword === newRule.keyword && (rObj.container || '*') === newRule.container;
       });
 
       if (!exists) {
-        allRules[domain].push(newRule);
+        allRules[targetKey].push(newRule);
         chrome.storage.local.set({ domRules: allRules }, () => {
           keywordInput.value = '';
           containerInput.value = '';
@@ -219,8 +257,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const deleteRule = (index) => {
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
-      if (allRules[domain]) {
-        allRules[domain].splice(index, 1);
+      const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
+      
+      if (allRules[targetKey]) {
+        allRules[targetKey].splice(index, 1);
         chrome.storage.local.set({ domRules: allRules }, loadRules);
       }
     });
