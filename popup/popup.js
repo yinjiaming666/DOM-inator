@@ -13,6 +13,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 监听规则类型切换
   ruleTypeSel.addEventListener('change', (e) => {
+    // 检查是否是由用户手动触发的切换，而不是代码中 dispatchEvent 触发的
+    if (e.isTrusted) {
+      keywordInput.value = '';
+      containerInput.value = '';
+    }
+    
     if (e.target.value === 'text') {
       keywordInput.placeholder = '输入要屏蔽的文本内容 (如 张三)';
     } else if (e.target.value === 'selector') {
