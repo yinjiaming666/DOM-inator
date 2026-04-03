@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       domain = '未知页面';
     }
     currentDomainEl.textContent = domain;
-    loadRules(domain);
+    loadRules();
   };
 
   // 初始加载域名和规则
@@ -194,10 +194,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let domain = '未知域名';
 
   // 渲染规则列表
-  const loadRules = (targetDomain = domain) => {
+  const loadRules = () => {
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
-      const targetKey = currentScope === 'domain' ? targetDomain : GLOBAL_KEY;
+      const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
       const scopeRules = allRules[targetKey] || [];
       
       rulesList.innerHTML = '';
@@ -336,6 +336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           textMatchInput.value = '';
           containerInput.value = '';
           saveFormState(); // 添加成功后清空状态
+          // 不管在什么作用域下，都强制重新加载一遍
           loadRules();
           showToast('规则添加成功！', 'success');
           // 滚动到列表底部
