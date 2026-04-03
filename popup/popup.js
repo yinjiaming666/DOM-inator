@@ -21,6 +21,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentScope = 'domain'; // 'domain' or 'global'
   const GLOBAL_KEY = '__global__';
 
+  // 简单的 Toast 提示
+  const toastMessage = document.getElementById('toastMessage');
+  const showToast = (msg, type = 'info') => {
+    if (!toastMessage) return;
+    toastMessage.textContent = msg;
+    if (type === 'warn' || type === 'error') {
+      toastMessage.style.background = 'rgba(220, 53, 69, 0.9)'; // 红色
+    } else if (type === 'success') {
+      toastMessage.style.background = 'rgba(40, 167, 69, 0.9)'; // 绿色
+    } else {
+      toastMessage.style.background = 'rgba(0, 0, 0, 0.8)'; // 默认黑灰
+    }
+    toastMessage.style.display = 'block';
+    setTimeout(() => toastMessage.style.opacity = '1', 10);
+    
+    if (toastMessage.timer) clearTimeout(toastMessage.timer);
+    toastMessage.timer = setTimeout(() => {
+      toastMessage.style.opacity = '0';
+      setTimeout(() => toastMessage.style.display = 'none', 300);
+    }, 2000);
+  };
+
   // 监听 Tab 切换
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
@@ -261,12 +283,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const container = containerInput.value.trim();
     
     if (!keyword) {
-      console.warn('请输入要屏蔽的内容或特征！');
+      showToast('请输入要屏蔽的内容或特征！', 'warn');
       return;
     }
     
     if (type === 'selector_text' && !textMatch) {
-      console.warn('请输入必须包含的文本！');
+      showToast('请输入必须包含的文本！', 'warn');
       return;
     }
     
@@ -274,7 +296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         document.createDocumentFragment().querySelector(keyword);
       } catch (e) {
-        console.warn('无效的 CSS 选择器！');
+        showToast('无效的 CSS 选择器！', 'warn');
         return;
       }
     }
@@ -315,9 +337,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           containerInput.value = '';
           saveFormState(); // 添加成功后清空状态
           loadRules();
+          showToast('规则添加成功！', 'success');
+          // 滚动到列表底部
+          setTimeout(() => {
+            if (rulesList) rulesList.scrollTop = rulesList.scrollHeight;
+          }, 50);
         });
       } else {
-        console.warn('该规则已存在！');
+        showToast('该规则已存在！', 'warn');
       }
     });
   });

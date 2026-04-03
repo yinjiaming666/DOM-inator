@@ -371,7 +371,8 @@ const applyRules = () => {
           if (el.closest('.extension-blocked-element')) return;
           
           // 检查该元素内部文本是否包含指定文本
-          if (el.innerText && el.innerText.includes(ruleObj.textMatch)) {
+          const textContent = el.innerText || el.textContent || '';
+          if (textContent.includes(ruleObj.textMatch)) {
             const targetEl = (ruleObj.container && ruleObj.container !== '*') 
               ? el.closest(ruleObj.container) 
               : el;
