@@ -2,7 +2,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const currentDomainEl = document.getElementById('currentDomain');
   const keywordInput = document.getElementById('keywordInput');
   const containerInput = document.getElementById('containerInput');
+  const textMatchInput = document.getElementById('textMatchInput');
   const pickContentBtn = document.getElementById('pickContentBtn');
+  const pickTextMatchBtn = document.getElementById('pickTextMatchBtn');
   const pickContainerBtn = document.getElementById('pickContainerBtn');
   const addRuleBtn = document.getElementById('addRuleBtn');
   const rulesList = document.getElementById('rulesList');
@@ -10,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const globalToggleText = document.getElementById('globalToggleText');
 
   const ruleTypeSel = document.getElementById('ruleType');
+  const keywordPreview = document.getElementById('keywordPreview');
+  const containerPreview = document.getElementById('containerPreview');
+  const textMatchGroup = document.getElementById('textMatchGroup');
+  const textMatchPreview = document.getElementById('textMatchPreview');
   const rulesListTitle = document.getElementById('rulesListTitle');
 
   let currentScope = 'domain'; // 'domain' or 'global'
@@ -52,14 +58,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.isTrusted) {
       keywordInput.value = '';
       containerInput.value = '';
+      textMatchInput.value = '';
     }
     
     if (e.target.value === 'text') {
       keywordInput.placeholder = '输入要屏蔽的文本内容 (如 张三)';
+      textMatchGroup.style.display = 'none';
     } else if (e.target.value === 'selector') {
       keywordInput.placeholder = '输入CSS选择器 (如 .ad-banner)';
+      textMatchGroup.style.display = 'none';
+    } else if (e.target.value === 'selector_text') {
+      keywordInput.placeholder = '输入目标元素的 CSS选择器 (如 .ad-banner)';
+      textMatchGroup.style.display = 'flex';
     } else if (e.target.value === 'image') {
       keywordInput.placeholder = '输入图片URL片段 (如 ads/banner.jpg)';
+      textMatchGroup.style.display = 'none';
     }
     saveFormState();
   });
@@ -70,13 +83,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       popupFormState: {
         ruleType: ruleTypeSel.value,
         keyword: keywordInput.value,
+        textMatch: textMatchInput.value,
         container: containerInput.value
       }
     });
+    updatePreviews();
   };
 
   // 监听输入框变化并保存状态
   keywordInput.addEventListener('input', saveFormState);
+  textMatchInput.addEventListener('input', saveFormState);
   containerInput.addEventListener('input', saveFormState);
 
   // 更新当前域名的函数
@@ -130,6 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const state = result.popupFormState;
       ruleTypeSel.value = state.ruleType || 'text'; // 默认设为文本
       keywordInput.value = state.keyword || '';
+      textMatchInput.value = state.textMatch || '';
       containerInput.value = state.container || '';
       
       // 触发一下 change 事件来更新 placeholder 的显示
@@ -176,11 +193,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         let typeText = '选择器';
         if (ruleObj.type === 'text') typeText = '文本';
         if (ruleObj.type === 'image') typeText = '图片';
+        if (ruleObj.type === 'selector_text') typeText = 'CSS+文本';
 
         const text = document.createElement('div');
         text.className = 'rule-text';
-        text.innerHTML = `<span style="color:#1a73e8; font-weight:bold;">[${typeText}]</span> ${ruleObj.keyword} 
-                          ${ruleObj.container && ruleObj.container !== '*' ? `<br><small style="color:#888;">容器: ${ruleObj.container}</small>` : ''}`;
+        
+        let extraInfo = '';
+        if (ruleObj.type === 'selector_text' && ruleObj.textMatch) {
+          extraInfo += `<br><small style="color:#e67c73;">必须包含: ${ruleObj.textMatch}</small>`;
+        }
+        if (ruleObj.container && ruleObj.container !== '*') {
+          extraInfo += `<br><small style="color:#888;">容器: ${ruleObj.container}</small>`;
+        }
+        
+        text.innerHTML = `<span style="color:#1a73e8; font-weight:bold;">[${typeText}]</span> ${ruleObj.keyword} ${extraInfo}`;
         
         const delBtn = document.createElement('button');
         delBtn.className = 'del-btn';
@@ -198,6 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   addRuleBtn.addEventListener('click', () => {
     const type = ruleTypeSel.value;
     const keyword = keywordInput.value.trim();
+    const textMatch = textMatchInput.value.trim();
     const container = containerInput.value.trim();
     
     if (!keyword) {
@@ -205,7 +232,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     
-    if (type === 'selector') {
+    if (type === 'selector_text' && !textMatch) {
+      console.warn('请输入必须包含的文本！');
+      return;
+    }
+    
+    if (type === 'selector' || type === 'selector_text') {
       try {
         document.createDocumentFragment().querySelector(keyword);
       } catch (e) {
@@ -223,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     
-    const newRule = { type, keyword, container: container || '*' };
+    const newRule = { type, keyword, textMatch, container: container || '*' };
 
     chrome.storage.local.get(['domRules'], (result) => {
       const allRules = result.domRules || {};
@@ -235,14 +267,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // 判断是否已存在相同规则
       const exists = allRules[targetKey].some(r => {
-        const rObj = typeof r === 'string' ? { type: 'selector', keyword: r, container: '*' } : r;
-        return rObj.type === newRule.type && rObj.keyword === newRule.keyword && (rObj.container || '*') === newRule.container;
+        const rObj = typeof r === 'string' ? { type: 'selector', keyword: r, container: '*', textMatch: '' } : r;
+        return rObj.type === newRule.type && 
+               rObj.keyword === newRule.keyword && 
+               (rObj.textMatch || '') === (newRule.textMatch || '') && 
+               (rObj.container || '*') === newRule.container;
       });
 
       if (!exists) {
         allRules[targetKey].push(newRule);
         chrome.storage.local.set({ domRules: allRules }, () => {
           keywordInput.value = '';
+          textMatchInput.value = '';
           containerInput.value = '';
           saveFormState(); // 添加成功后清空状态
           loadRules();
@@ -275,8 +311,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       const { targetInput, value, pickType } = request;
       
       if (targetInput === 'keyword') {
-        ruleTypeSel.value = pickType;
+        // 如果当前是 selector_text 模式，并且 pickType 提取出来是 selector，则保留 selector_text 模式
+        if (ruleTypeSel.value === 'selector_text' && pickType === 'selector') {
+          // 不改变 ruleTypeSel
+        } else {
+          ruleTypeSel.value = pickType;
+        }
         keywordInput.value = value;
+      } else if (targetInput === 'textMatch') {
+        textMatchInput.value = value;
       } else if (targetInput === 'container') {
         containerInput.value = value;
       }
@@ -333,7 +376,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // 开启页面选择器 (提取文本/图片/选择器模式)
-  pickContentBtn.addEventListener('click', () => triggerPicker(ruleTypeSel.value, 'keyword'));
+  pickContentBtn.addEventListener('click', () => {
+    const pType = ruleTypeSel.value === 'selector_text' ? 'selector' : ruleTypeSel.value;
+    triggerPicker(pType, 'keyword');
+  });
+
+  pickTextMatchBtn.addEventListener('click', () => triggerPicker('text', 'textMatch'));
 
   // 开启页面选择器 (提取父容器模式，统一使用 CSS 选择器逻辑)
   pickContainerBtn.addEventListener('click', () => triggerPicker('selector', 'container'));

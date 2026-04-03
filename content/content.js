@@ -144,6 +144,11 @@ const createOverlay = () => {
       if (currentTargetInput === 'container') {
         previewText = generateSelector(hoveredElement);
         prefix = '父容器选择器';
+      } else if (currentTargetInput === 'textMatch') {
+        let text = hoveredElement.innerText || '';
+        text = text.trim();
+        previewText = text.length > 80 ? text.substring(0, 80) + '...' : text;
+        prefix = '包含文本';
       } else if (currentPickType === 'selector') {
         previewText = generateSelector(hoveredElement);
         prefix = 'CSS选择器';
@@ -284,6 +289,7 @@ const startPickingMode = (pickType = 'selector', targetInput = 'selector') => {
   
   let hintText = '👆 请点击页面上的元素生成选择器';
   if (currentPickType === 'text') hintText = '👆 请点击你要提取的文本片段';
+  if (currentTargetInput === 'textMatch') hintText = '👆 请点击你要作为双重过滤条件的文本内容';
   if (currentPickType === 'image') hintText = '👆 请点击你要提取的图片';
   if (currentTargetInput === 'container') hintText = '👆 请点击你想作为父容器的元素';
   
@@ -356,6 +362,21 @@ const applyRules = () => {
           if (targetEl) blockElement(targetEl);
         });
       } 
+      else if (ruleObj.type === 'selector_text') {
+        const elements = document.querySelectorAll(ruleObj.keyword);
+        elements.forEach(el => {
+          if (el.closest('.extension-blocked-element')) return;
+          
+          // 检查该元素内部文本是否包含指定文本
+          if (el.innerText && el.innerText.includes(ruleObj.textMatch)) {
+            const targetEl = (ruleObj.container && ruleObj.container !== '*') 
+              ? el.closest(ruleObj.container) 
+              : el;
+              
+            if (targetEl) blockElement(targetEl);
+          }
+        });
+      }
       else if (ruleObj.type === 'text') {
         // 使用 TreeWalker 遍历页面上的所有文本节点
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
