@@ -155,6 +155,13 @@ const createOverlay = () => {
       } else if (currentPickType === 'image') {
         if (hoveredElement.tagName.toLowerCase() === 'img') {
           previewText = hoveredElement.src;
+        } else if (hoveredElement.tagName.toLowerCase() === 'svg' || hoveredElement.closest('svg')) {
+          // 如果是 SVG 或 SVG 内部的元素
+          const svgEl = hoveredElement.tagName.toLowerCase() === 'svg' ? hoveredElement : hoveredElement.closest('svg');
+          // 由于 SVG 通常是内联的，没有链接，我们提取它的一部分内容（如 viewBox 或 classes）作为标识
+          // 为了作为规则的特征，我们尝试获取一个能唯一标识这个 SVG 的 CSS 选择器
+          previewText = generateSelector(svgEl);
+          prefix = 'SVG 图片 (CSS 特征)';
         } else {
           const bg = window.getComputedStyle(hoveredElement).backgroundImage;
           if (bg && bg !== 'none') {
@@ -162,7 +169,7 @@ const createOverlay = () => {
             if (match) previewText = match[1];
           }
         }
-        prefix = '图片链接';
+        if (!prefix) prefix = '图片链接';
       }
 
       if (previewText) {
@@ -221,6 +228,14 @@ const handleClick = (e) => {
     else if (currentPickType === 'image') {
       if (targetEl.tagName.toLowerCase() === 'img') {
         extractedValue = targetEl.src;
+      } else if (targetEl.tagName.toLowerCase() === 'svg' || targetEl.closest('svg')) {
+        // SVG 处理
+        const svgEl = targetEl.tagName.toLowerCase() === 'svg' ? targetEl : targetEl.closest('svg');
+        // 因为 SVG 没有明确的 src，且通常内联，我们只能把它当作普通元素，提取它的 CSS 特征
+        // 并自动把规则类型改为 selector，这需要在 popup 那边处理或者我们就用它的特征作为 "包含文本" 的一种变体
+        // 最稳妥的是提取它的外部 HTML 结构的一小段，但太长。或者提取它的类名。
+        // 这里我们提取它的类名特征，并告诉用户这会被作为 CSS 选择器规则
+        extractedValue = generateSelector(svgEl);
       } else {
         const bg = window.getComputedStyle(targetEl).backgroundImage;
         if (bg && bg !== 'none') {
@@ -229,18 +244,24 @@ const handleClick = (e) => {
         }
       }
       if (!extractedValue) {
-        alert('所选元素不是图片或没有背景图！');
+        alert('所选元素不是图片(img/svg)或没有背景图！');
         return;
       }
     }
 
     // 将提取结果直接发给侧边栏 (Side Panel)
     if (extractedValue) {
+      // 动态判断实际的 pickType，特别是当用户在图片模式下点到了 SVG 时
+      let actualPickType = currentPickType;
+      if (currentPickType === 'image' && (targetEl.tagName.toLowerCase() === 'svg' || targetEl.closest('svg'))) {
+        actualPickType = 'selector'; // SVG 只能用 CSS 选择器屏蔽
+      }
+
       chrome.runtime.sendMessage({
         action: "elementSelected",
         value: extractedValue,
         targetInput: currentTargetInput,
-        pickType: currentPickType
+        pickType: actualPickType
       });
       console.log('已提取内容:', extractedValue);
     }
@@ -357,7 +378,7 @@ const applyRules = () => {
         }
       } 
       else if (ruleObj.type === 'image') {
-        // 查找所有图片，通过 src 属性匹配
+        // 查找所有图片，通过 src 属性匹配，并且支持对 svg 的处理（虽然 svg 已经被转为 selector，但兼容旧数据或逻辑）
         const imgs = document.querySelectorAll('img');
         imgs.forEach(img => {
           // 排除已经被屏蔽的图片
@@ -367,7 +388,7 @@ const applyRules = () => {
             const targetEl = (ruleObj.container && ruleObj.container !== '*') 
               ? img.closest(ruleObj.container) 
               : img;
-            blockElement(targetEl);
+            if (targetEl) blockElement(targetEl);
           }
         });
       }
