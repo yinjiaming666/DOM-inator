@@ -36,6 +36,7 @@ const generateSelector = (el) => {
 // --- DOM 选择器交互逻辑 (全屏快照遮罩方案) ---
 let overlaySvg = null;
 let pickerToolbar = null;
+let pickerTooltip = null;
 
 const createOverlay = () => {
   // 创建覆盖全屏的 SVG 遮罩层
@@ -83,6 +84,22 @@ const createOverlay = () => {
     e.stopPropagation();
     stopPickingMode();
   });
+
+  // 创建跟随鼠标的 Tooltip 预览
+  pickerTooltip = document.createElement('div');
+  pickerTooltip.id = 'extension-picker-tooltip';
+  pickerTooltip.style.cssText = `
+    position: fixed; z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.85); color: #fff;
+    padding: 8px 12px; border-radius: 6px;
+    font-size: 13px; font-family: monospace;
+    pointer-events: none; max-width: 350px;
+    word-break: break-all; display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.2);
+    line-height: 1.4;
+  `;
+  document.documentElement.appendChild(pickerTooltip);
 };
 
   const handleMouseMove = (e) => {
@@ -93,11 +110,12 @@ const createOverlay = () => {
     const target = document.elementFromPoint(e.clientX, e.clientY);
     overlaySvg.style.display = 'block';
   
-    // 避免选中工具栏或已经屏蔽的元素
-    if (!target || target.closest('#extension-picker-toolbar') || target.classList.contains('extension-blocked-element')) {
+    // 避免选中工具栏、tooltip或已经屏蔽的元素
+    if (!target || target.closest('#extension-picker-toolbar') || target.closest('#extension-picker-tooltip') || target.classList.contains('extension-blocked-element')) {
       document.getElementById('picker-hole').setAttribute('width', '0');
       document.getElementById('picker-outline').setAttribute('width', '0');
       hoveredElement = null;
+      if (pickerTooltip) pickerTooltip.style.display = 'none';
       return;
     }
   
@@ -117,6 +135,58 @@ const createOverlay = () => {
     outline.setAttribute('y', rect.top);
     outline.setAttribute('width', rect.width);
     outline.setAttribute('height', rect.height);
+    
+    // 更新 Tooltip 预览内容和位置
+    if (pickerTooltip) {
+      let previewText = '';
+      let prefix = '';
+      
+      if (currentTargetInput === 'container') {
+        previewText = generateSelector(hoveredElement);
+        prefix = '父容器选择器';
+      } else if (currentPickType === 'selector') {
+        previewText = generateSelector(hoveredElement);
+        prefix = 'CSS选择器';
+      } else if (currentPickType === 'text') {
+        let text = hoveredElement.innerText || '';
+        text = text.trim();
+        previewText = text.length > 80 ? text.substring(0, 80) + '...' : text;
+        prefix = '文本内容';
+      } else if (currentPickType === 'image') {
+        if (hoveredElement.tagName.toLowerCase() === 'img') {
+          previewText = hoveredElement.src;
+        } else {
+          const bg = window.getComputedStyle(hoveredElement).backgroundImage;
+          if (bg && bg !== 'none') {
+            const match = bg.match(/url\(['"]?(.*?)['"]?\)/);
+            if (match) previewText = match[1];
+          }
+        }
+        prefix = '图片链接';
+      }
+
+      if (previewText) {
+        pickerTooltip.innerHTML = `<strong style="color:#8ab4f8;">[${prefix}]</strong><br/>${previewText}`;
+        pickerTooltip.style.display = 'block';
+        
+        // 计算位置，给鼠标留出一点偏移量避免遮挡
+        let tooltipX = e.clientX + 15;
+        let tooltipY = e.clientY + 15;
+        
+        // 边界检查，防止 tooltip 超出屏幕边缘
+        if (tooltipX + 370 > window.innerWidth) {
+          tooltipX = e.clientX - 370;
+        }
+        if (tooltipY + 80 > window.innerHeight) {
+          tooltipY = e.clientY - 80;
+        }
+        
+        pickerTooltip.style.left = tooltipX + 'px';
+        pickerTooltip.style.top = tooltipY + 'px';
+      } else {
+        pickerTooltip.style.display = 'none';
+      }
+    }
   };
 
 const handleClick = (e) => {
@@ -210,8 +280,11 @@ const stopPickingMode = () => {
   
   if (overlaySvg) overlaySvg.remove();
   if (pickerToolbar) pickerToolbar.remove();
+  if (pickerTooltip) pickerTooltip.remove();
+  
   overlaySvg = null;
   pickerToolbar = null;
+  pickerTooltip = null;
   hoveredElement = null;
 
   document.removeEventListener('mousemove', handleMouseMove, true);
