@@ -208,13 +208,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         text.innerHTML = `<span style="color:#1a73e8; font-weight:bold;">[${typeText}]</span> ${ruleObj.keyword} ${extraInfo}`;
         
+        const controlsDiv = document.createElement('div');
+        controlsDiv.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'switch';
+        toggleLabel.style.cssText = 'display: flex; align-items: center; font-size: 12px; cursor: pointer; gap: 4px;';
+        
+        const isEnabled = ruleObj.enabled !== false; // 默认为 true
+        const toggleCheckbox = document.createElement('input');
+        toggleCheckbox.type = 'checkbox';
+        toggleCheckbox.checked = isEnabled;
+        toggleCheckbox.style.accentColor = '#1a73e8';
+        toggleCheckbox.style.cursor = 'pointer';
+        
+        const toggleText = document.createElement('span');
+        toggleText.textContent = isEnabled ? '开启' : '关闭';
+        toggleText.style.color = isEnabled ? '#1a73e8' : '#888';
+
+        toggleCheckbox.addEventListener('change', (e) => {
+          toggleRule(index, e.target.checked);
+        });
+
+        toggleLabel.appendChild(toggleCheckbox);
+        toggleLabel.appendChild(toggleText);
+        
         const delBtn = document.createElement('button');
         delBtn.className = 'del-btn';
         delBtn.textContent = '删除';
         delBtn.onclick = () => deleteRule(index);
 
+        controlsDiv.appendChild(toggleLabel);
+        controlsDiv.appendChild(delBtn);
+
+        // 如果规则被禁用，给整行加个透明度
+        if (!isEnabled) {
+          li.style.opacity = '0.6';
+        }
+
         li.appendChild(text);
-        li.appendChild(delBtn);
+        li.appendChild(controlsDiv);
         rulesList.appendChild(li);
       });
     });
@@ -297,6 +330,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       if (allRules[targetKey]) {
         allRules[targetKey].splice(index, 1);
+        chrome.storage.local.set({ domRules: allRules }, loadRules);
+      }
+    });
+  };
+
+  // 开启/关闭单个规则
+  const toggleRule = (index, isEnabled) => {
+    chrome.storage.local.get(['domRules'], (result) => {
+      const allRules = result.domRules || {};
+      const targetKey = currentScope === 'domain' ? domain : GLOBAL_KEY;
+      
+      if (allRules[targetKey] && allRules[targetKey][index]) {
+        const rule = allRules[targetKey][index];
+        // 如果是老字符串格式，先转成对象
+        if (typeof rule === 'string') {
+          allRules[targetKey][index] = { type: 'selector', keyword: rule, enabled: isEnabled };
+        } else {
+          allRules[targetKey][index].enabled = isEnabled;
+        }
         chrome.storage.local.set({ domRules: allRules }, loadRules);
       }
     });

@@ -347,6 +347,9 @@ const applyRules = () => {
     // 兼容旧版本的纯字符串规则（默认按 CSS 选择器处理）
     const ruleObj = typeof rule === 'string' ? { type: 'selector', keyword: rule } : rule;
     
+    // 如果该规则被单独关闭了，则跳过
+    if (ruleObj.enabled === false) return;
+    
     try {
       if (ruleObj.type === 'selector') {
         const elements = document.querySelectorAll(ruleObj.keyword);
